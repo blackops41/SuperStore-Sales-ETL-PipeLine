@@ -2,6 +2,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3.x-blue?logo=python&logoColor=white)
 ![Pandas](https://img.shields.io/badge/Pandas-2.x-150458?logo=pandas&logoColor=white)
+![NumPy](https://img.shields.io/badge/NumPy-1.x-013243?logo=numpy&logoColor=white)
 ![MySQL](https://img.shields.io/badge/MySQL-8.x-4479A1?logo=mysql&logoColor=white)
 ![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-ORM-cc0000)
 ![Status](https://img.shields.io/badge/Status-Complete-brightgreen)
@@ -10,7 +11,7 @@
 
 ## 📌 Project Overview
 
-This project demonstrates an end-to-end ETL (Extract, Transform, Load) pipeline developed to process and analyze retail sales data. The workflow involves extracting raw data from a CSV source, performing complex data cleaning and transformation using Python (Pandas), and loading the structured data into a MySQL relational database for advanced business intelligence querying.
+This project demonstrates an end-to-end ETL (Extract, Transform, Load) pipeline developed to process and analyze retail sales data. The workflow involves extracting raw data from a CSV source, performing complex data cleaning and transformation using Python (Pandas), enforcing strict data quality and security gates, and loading the structured data into a MySQL relational database for advanced business intelligence querying.
 
 ---
 
@@ -19,7 +20,7 @@ This project demonstrates an end-to-end ETL (Extract, Transform, Load) pipeline 
 | Tool | Purpose |
 |---|---|
 | **Python 3.x** | Core scripting language |
-| **Pandas & NumPy** | Data manipulation and numerical operations |
+| **Pandas & NumPy** | Data manipulation, validation, and vectorized numerical operations |
 | **MySQL** | Relational database (storage layer) |
 | **SQLAlchemy & PyMySQL** | Database engine abstraction and connectivity |
 | **VS Code / Jupyter Notebook** | Development environment |
@@ -37,9 +38,9 @@ This project demonstrates an end-to-end ETL (Extract, Transform, Load) pipeline 
 df = pd.read_csv('superstore_son_versiyon.csv', encoding='utf-8')
 df.info()
 df[['Sales', 'Profit', 'Quantity', 'Discount']].describe()
-```
 
-**Statistical summary (selected columns):**
+
+Statistical summary (selected columns):
 
 | | Sales ($) | Profit ($) | Quantity | Discount |
 |---|---|---|---|---|
@@ -52,40 +53,35 @@ df[['Sales', 'Profit', 'Quantity', 'Discount']].describe()
 | 75% | 251.00 | 36.81 | 5 | 0.20 |
 | max | 22,638.00 | 8,399.98 | 14 | 0.85 |
 
-> **Note:** The 25th percentile of Profit is $0.00, meaning at least 25% of all transactions generate no profit. Combined with a minimum profit of -$6,599.98, this signals a structurally significant discounting problem across the dataset.
+Note: The 25th percentile of Profit is $0.00, meaning at least 25% of all transactions generate no profit. Combined with a minimum profit of -$6,599.98, this signals a structurally significant discounting problem across the dataset.
 
----
+2. Validation (Data Quality Gate)
+Before applying business logic, a strict data quality gateway was implemented to ensure reporting accuracy:
 
-### 2. Transformation (Data Cleaning & Feature Engineering)
+Duplicate Handling: Automatically detects and drops duplicate transactions to prevent inflated revenue figures.
 
-- **Column Standardization:** Replaced dots with underscores in column names (e.g., `Order.ID` → `Order_ID`) to ensure compatibility with SQL naming conventions.
-- **Data Type Correction:** Converted `Order_Date` and `Ship_Date` strings into proper `datetime` objects.
-- **Feature Engineering:** Calculated a new metric, `Profit_Margin`, to provide deeper insights into the profitability of sales.
-- **Aggregation:** Performed grouping by `Category` and `Region` to validate total sales and profit figures before the loading phase.
+Null Value Checks: Scans for missing values across all columns.
 
-```python
-# Feature engineering
-df['Profit_Margin'] = (df['Profit'] / df['Sales']) * 100
+Schema Validation: Ensures critical business columns (Sales, Profit, Quantity, Discount) exist before processing, raising a safe error if the source data structure changes.
+
+3. Transformation (Data Cleaning & Feature Engineering)
+Column Standardization: Replaced dots with underscores in column names (e.g., Order.ID → Order_ID) to ensure compatibility with SQL naming conventions.
+
+Data Type Correction: Converted Order_Date and Ship_Date strings into proper datetime objects.
+
+Safe Mathematical Operations: Handled potential DivisionByZero exceptions during margin calculations using vectorized conditional logic (np.where), preventing infinite (inf) values from corrupting the SQL database.
+
+Aggregation: Performed grouping by Category and Region to validate total sales and profit figures before the loading phase.
+
+# Safe Feature Engineering (Division by Zero protection)
+df['Profit_Margin'] = np.where( df['Sales'] == 0, 0, (df['Profit'] / df['Sales']) * 100 )
 
 # Date conversion
 df['Order_Date'] = pd.to_datetime(df['Order_Date'], errors='coerce')
 df['Ship_Date']  = pd.to_datetime(df['Ship_Date'],  errors='coerce')
 
-# Grouped aggregation
-df.groupby(["Category", "Region"])[["Sales", "Profit"]].sum()
-```
 
-**Profit Margin sample (first 5 rows):**
-
-| Order ID | Country | Sales ($) | Profit ($) | Profit Margin (%) |
-|---|---|---|---|---|
-| CA-2011-130813 | United States | 19.00 | 9.33 | 49.11% |
-| CA-2011-148614 | United States | 19.00 | 9.29 | 48.91% |
-| CA-2011-118962 | United States | 21.00 | 9.84 | 46.87% |
-| CA-2011-118962 | United States | 111.00 | 53.26 | 47.98% |
-| CA-2011-146969 | United States | 6.00 | 3.11 | 51.84% |
-
-**Sales & Profit by Category and Region (selected):**
+Sales & Profit by Category and Region (selected):
 
 | Category | Region | Sales ($) | Profit ($) |
 |---|---|---|---|
@@ -96,17 +92,21 @@ df.groupby(["Category", "Region"])[["Sales", "Profit"]].sum()
 | Furniture | East | 208,291 | 3,046 |
 | **Furniture** | **Southeast Asia** | **313,391** | **-7,270** ⚠️ |
 
-> ⚠️ **Key Finding:** Furniture in Southeast Asia generates **$313K in revenue but a net loss of -$7,270** — a negative-margin market. This pattern, where high gross sales mask structural losses, is a critical signal for pricing policy review, regional strategy reassessment, and financial risk management.
+⚠️ Key Finding: Furniture in Southeast Asia generates $313K in revenue but a net loss of -$7,270 — a negative-margin market. This pattern, where high gross sales mask structural losses, is a critical signal for pricing policy review, regional strategy reassessment, and financial risk management.
 
----
+4. Loading & Security
+Established a secure connection to the MySQL server using an SQLAlchemy Engine.
 
-### 3. Loading
+Credential Security: Database passwords are strictly managed via environment variables (os.getenv) to prevent hardcoded credential leakage on GitHub.
 
-- Established a secure connection to the MySQL server using an **SQLAlchemy Engine**.
-- Utilized the `.to_sql()` method with the `replace` parameter to programmatically create the table schema and insert the entire dataset into the `superstore_son` database.
+Utilized the .to_sql() method with the replace parameter for idempotency (safe to re-run without duplicating records).
 
-```python
-engine = create_engine('mysql+pymysql://user:****@localhost/superstore_son')
+import os
+
+# Secure credential management
+db_password = os.getenv("DB_PASSWORD")
+engine_url = f"mysql+pymysql://root:{db_password}@localhost/superstore_son"
+engine = create_engine(engine_url)
 
 df.to_sql(
     'superstore_orders',
@@ -114,48 +114,40 @@ df.to_sql(
     if_exists='replace',  # Idempotent: safe to re-run
     index=False
 )
-# ✅ 51,290 rows successfully loaded into MySQL
-```
+# ✅ Rows successfully loaded into MySQL
 
----
-
-## 📂 Repository Structure
-
-```
+📂 Repository Structure
 ├── src/
-│   └── data_pipeline.py      # Main ETL script
+│   └── data_pipeline.py      # Main ETL script with Data Validation
 ├── sql/
 │   └── business_queries.sql  # SQL scripts for data analysis
 ├── data/
-│   └── superstore_data.csv   # Raw dataset
+│   └── superstore_data.csv   # Raw dataset (Not uploaded due to size)
 ├── README.md                 # Project documentation
 └── requirements.txt          # Required Python libraries
-```
 
----
+Business Relevance
+This project reflects an analytical approach informed by both economics training and legal/compliance coursework — moving beyond technical data handling to identify commercially significant patterns:
 
-## 💡 Business Relevance
+Enterprise-Grade Security & Reliability: Implemented data validation gates and environment variable protection, demonstrating readiness for production environments and compliance with basic cybersecurity standards.
 
-This project reflects an analytical approach informed by both **economics training** and **legal/compliance coursework** — moving beyond technical data handling to identify commercially significant patterns:
+Margin erosion risk: At least 25% of transactions yield zero profit; Southeast Asia Furniture operates at a net loss despite high revenue — directly relevant to financial control and audit processes.
 
-- **Margin erosion risk:** At least 25% of transactions yield zero profit; Southeast Asia Furniture operates at a net loss despite high revenue — directly relevant to financial control and audit processes.
-- **Regional performance variance:** Profitability diverges sharply across markets, supporting data-driven resource allocation decisions.
-- **Data integrity enforcement:** Type correction and naming standardization are prerequisites for reliable regulatory reporting and compliance workflows.
+Regional performance variance: Profitability diverges sharply across markets, supporting data-driven resource allocation decisions.
 
----
+Data integrity enforcement: Type correction, null dropping, and naming standardization are prerequisites for reliable regulatory reporting.
 
-## 🚀 How to Run
 
-```bash
 # 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. Configure your database connection in data_pipeline.py
+# 2. Set your database password as an environment variable
+# (Windows)
+set DB_PASSWORD=your_password
+# (Mac/Linux)
+export DB_PASSWORD="your_password"
 
 # 3. Run the pipeline
 python src/data_pipeline.py
-```
 
----
-
-*Dataset: Adapted from the Tableau Superstore dataset, widely used in business analytics education.*
+Dataset: Adapted from the Tableau Superstore dataset, widely used in business analytics education.
