@@ -172,3 +172,11 @@ python src/data_pipeline.py
 ---
 
 *Dataset: Adapted from the Tableau Superstore dataset, widely used in business analytics education.*
+
+---
+
+## 🛠️ Future Roadmap (v2.0)
+To scale this pipeline for production environments, the following enhancements are planned:
+- **Incremental Loading:** Implementing `MAX(Order_Date)` logic to fetch only new records.
+- **Advanced Constraints:** Adding `assert` checks and `schema-enforcement` via Pydantic.
+- **Database Indexing:** Optimizing query performance on `Customer_Name` and `Order_Date` columns.
