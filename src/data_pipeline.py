@@ -24,8 +24,11 @@ def run_pipeline():
         # STEP 1: EXTRACTION
         # =============================================
         logging.info("--- Step 1: Extraction ---")
-        logging.info("Loading dataset from CSV...")
-        df = pd.read_csv('superstore_son_versiyon.csv', encoding='utf-8')
+        
+        # Dosya adını çevresel değişkenden al, bulamazsan varsayılan olarak csv'yi kullan.
+        data_file = os.getenv("DATA_FILE", "superstore_son_versiyon.csv")
+        logging.info(f"Loading dataset from {data_file}...")
+        df = pd.read_csv(data_file, encoding='utf-8')
         logging.info(f"Successfully loaded {len(df)} rows and {len(df.columns)} columns.")
 
         # =============================================
@@ -86,18 +89,30 @@ def run_pipeline():
         )
         logging.info(f"Main table rows: {len(df)} | Summary table rows: {len(agg_df)}")
 
-        # =============================================
+       # =============================================
         # STEP 4: LOADING & SECURITY (MySQL)
         # =============================================
         logging.info("--- Step 4: Loading & Credential Management ---")
 
+        # Tüm ayarları kasadan (.env) çek. (Bulamazsa varsayılan değerleri kullan)
+        db_user = os.getenv("DB_USER", "root")
         db_password = os.getenv("DB_PASSWORD")
-        if not db_password:
-            raise ValueError("DB_PASSWORD environment variable not found! Please set it before running.")
+        db_host = os.getenv("DB_HOST", "localhost")
+        db_port = os.getenv("DB_PORT", "3306")
+        db_name = os.getenv("DB_NAME", "superstore_son")
 
-        engine_url = f"mysql+pymysql://root:{db_password}@localhost/superstore_son"
+        if not db_password:
+            error_msg = "CRITICAL: 'DB_PASSWORD' environment variable is missing. Pipeline cannot connect to MySQL."
+            logging.error(error_msg)
+            raise EnvironmentError(error_msg)
+
+        # Dinamik Bağlantı Cümlesi (ConnectionString)
+        engine_url = f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
         engine = create_engine(engine_url)
 
+        logging.info(f"Connecting to MySQL database '{db_name}' at {db_host}:{db_port}...")
+
+        # KOPYALARKEN EKSİK KALAN KISIM BURASIYDI:
         logging.info("Transferring raw data to MySQL (superstore_orders table)...")
         df.to_sql('superstore_orders', con=engine, if_exists='replace', index=False)
 
