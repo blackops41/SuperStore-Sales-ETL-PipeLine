@@ -23,6 +23,7 @@ This project demonstrates an end-to-end ETL (Extract, Transform, Load) pipeline 
 | **Pandas & NumPy** | Data manipulation, validation, and vectorized numerical operations |
 | **MySQL** | Relational database (storage layer) |
 | **SQLAlchemy & PyMySQL** | Database engine abstraction and connectivity |
+| **Seaborn & Matplotlib** | Business analytics visualizations |
 | **VS Code / Jupyter Notebook** | Development environment |
 
 ---
@@ -131,11 +132,24 @@ df.to_sql(
 
 ```
 ├── src/
-│   └── data_pipeline.py      # Main ETL script with Data Validation
+│   ├── data_pipeline.py      # Main ETL script with Data Validation
+│   └── analytics_viz.py      # Business analytics & visualization layer
 ├── sql/
-│   └── business_queries.sql  # SQL scripts for data analysis
+│   └── business_queries.sql  # SQL scripts for business intelligence
+├── images/                   # Auto-generated visualization outputs
+│   ├── 01_executive_summary.png
+│   ├── 02_monthly_trend.png
+│   ├── 03_yoy_growth.png
+│   ├── 04_pareto_analysis.png
+│   ├── 05_segment_heatmap.png
+│   ├── 06_region_performance.png
+│   ├── 07_subcategory_margin.png
+│   ├── 08_discount_impact.png
+│   └── 09_loss_segments.png
 ├── data/
-│   └── superstore_data.csv   # Raw dataset (Not uploaded due to size)
+│   └── superstore_data.csv   # Raw dataset (not uploaded due to size)
+├── .env                      # Environment variables (not committed)
+├── .gitignore                # Excludes .env and /data
 ├── README.md                 # Project documentation
 └── requirements.txt          # Required Python libraries
 ```
@@ -159,14 +173,18 @@ This project reflects an analytical approach informed by both **economics traini
 # 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. Set your database password as an environment variable
+# 2. Set environment variables
 # (Windows)
 set DB_PASSWORD=your_password
 # (Mac/Linux)
 export DB_PASSWORD="your_password"
 
-# 3. Run the pipeline
+# 3. Run the ETL pipeline
 python src/data_pipeline.py
+
+# 4. Generate business analytics visuals
+python src/analytics_viz.py
+# ✅ All 9 charts saved to /images
 ```
 
 ---
@@ -176,33 +194,77 @@ python src/data_pipeline.py
 ---
 
 ## 🛠️ Future Roadmap (v2.0)
+
 To scale this pipeline for production environments, the following enhancements are planned:
+
 - **Incremental Loading:** Implementing `MAX(Order_Date)` logic to fetch only new records.
-- **Advanced Constraints:** Adding `assert` checks and `schema-enforcement` via Pydantic.
+- **Advanced Constraints:** Adding `assert` checks and schema enforcement via Pydantic.
 - **Database Indexing:** Optimizing query performance on `Customer_Name` and `Order_Date` columns.
+
+---
 
 ## 📊 Business Analytics Dashboard
 
-Automated insights generated from the MySQL Data Warehouse using Python (Seaborn/Matplotlib).
+Automated insights generated from the MySQL Data Warehouse using Python (Seaborn / Matplotlib).  
+All visuals are produced by `src/analytics_viz.py` and saved to `/images`.
 
 ### 1. Executive Summary
-Overview of Total Sales, Profit, and Profit Margin.
+Total Sales, Profit, and Profit Margin at a glance.
+
 ![Executive Summary](images/01_executive_summary.png)
 
-### 2. Sales & Profit Trends
-Monthly trajectory of business performance.
+---
+
+### 2. Monthly Sales & Profit Trend
+Monthly trajectory of business performance across the full dataset period.
+
 ![Monthly Trend](images/02_monthly_trend.png)
 
+---
+
 ### 3. Year-over-Year Growth
-Visualizing annual performance shifts.
+Annual sales volume with YoY growth rate overlay.
+
 ![YoY Growth](images/03_yoy_growth.png)
 
-### 4. Pareto Analysis (Top Customers)
-Identifying the 20% of customers driving the majority of sales.
+---
+
+### 4. Pareto Analysis — Top Customers
+Identifying the ~20% of customers driving the majority of revenue, with cumulative % line.
+
 ![Pareto Analysis](images/04_pareto_analysis.png)
 
-### 5. Profitability Heatmap
-Deep dive into Category vs. Region performance.
+---
+
+### 5. Profitability Heatmap — Category × Region
+Color-coded profit matrix revealing which segment/region combinations are structurally loss-making.
+
 ![Segment Heatmap](images/05_segment_heatmap.png)
 
-> **Note:** For the full list of 9 analytical reports, please check the `/images` directory.
+---
+
+### 6. Region Performance
+Total sales and average profit per order by region — side-by-side comparison.
+
+![Region Performance](images/06_region_performance.png)
+
+---
+
+### 7. Sub-Category Profit Margin
+Diverging bar chart highlighting negative-margin product categories in red.
+
+![Sub-Category Margin](images/07_subcategory_margin.png)
+
+---
+
+### 8. Discount Impact on Profit
+Bubble scatter showing how increasing discount rates erode average profit per order.
+
+![Discount Impact](images/08_discount_impact.png)
+
+---
+
+### 9. Loss-Making Segments
+Critical risk detection — segments where total profit is negative despite positive revenue.
+
+![Loss Segments](images/09_loss_segments.png)
