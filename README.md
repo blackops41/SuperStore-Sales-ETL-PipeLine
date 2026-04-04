@@ -11,7 +11,23 @@
 
 ## 📌 Project Overview
 
-This project demonstrates an end-to-end ETL (Extract, Transform, Load) pipeline developed to process and analyze retail sales data. The workflow involves extracting raw data from a CSV source, performing complex data cleaning and transformation using Python (Pandas), enforcing strict data quality and security gates, and loading the structured data into a MySQL relational database for advanced business intelligence querying.
+This project demonstrates an end-to-end data engineering and analytics pipeline built on retail sales data. The workflow covers four layers: extracting raw data from a CSV source, performing data cleaning and feature engineering with Python (Pandas/NumPy), running structured business intelligence queries in MySQL, and generating automated visual reports with Seaborn/Matplotlib — all with production-grade security, logging, and error handling.
+
+---
+
+## 🏗️ Architecture
+
+```
+CSV Source
+    ↓
+ETL (data_pipeline.py)         — Extraction, Validation, Transformation, Loading
+    ↓
+MySQL Data Warehouse            — superstore_orders + sales_summary tables
+    ↓
+SQL (business_queries.sql)     — 9 business intelligence queries
+    ↓
+BI / Python (analytics_viz.py) — 9 automated visual reports
+```
 
 ---
 
@@ -21,24 +37,23 @@ This project demonstrates an end-to-end ETL (Extract, Transform, Load) pipeline 
 |---|---|
 | **Python 3.x** | Core scripting language |
 | **Pandas & NumPy** | Data manipulation, validation, and vectorized numerical operations |
-| **MySQL** | Relational database (storage layer) |
+| **MySQL** | Relational database — data warehouse layer |
 | **SQLAlchemy & PyMySQL** | Database engine abstraction and connectivity |
 | **Seaborn & Matplotlib** | Business analytics visualizations |
+| **python-dotenv** | Secure environment variable management |
 | **VS Code / Jupyter Notebook** | Development environment |
 
 ---
 
-## 🔄 The ETL Process
+## 🔄 The ETL Process (`data_pipeline.py`)
 
 ### 1. Extraction
 
-- The raw dataset (Superstore Sales) consisting of **51,290 rows** was imported into a Python environment using `pandas`.
-- Initial data exploration was conducted using `.info()`, `.describe()`, and `.head()` to understand data distribution and identify inconsistencies.
+The raw dataset (51,290 rows) is loaded via `pandas`. The source file path is configurable through the `DATA_FILE` environment variable, defaulting to the local CSV if not set.
 
 ```python
-df = pd.read_csv('superstore_son_versiyon.csv', encoding='utf-8')
-df.info()
-df[['Sales', 'Profit', 'Quantity', 'Discount']].describe()
+data_file = os.getenv("DATA_FILE", "superstore_son_versiyon.csv")
+df = pd.read_csv(data_file, encoding='utf-8')
 ```
 
 **Statistical summary (selected columns):**
@@ -54,38 +69,44 @@ df[['Sales', 'Profit', 'Quantity', 'Discount']].describe()
 | 75% | 251.00 | 36.81 | 5 | 0.20 |
 | max | 22,638.00 | 8,399.98 | 14 | 0.85 |
 
-> **Note:** The 25th percentile of Profit is $0.00, meaning at least 25% of all transactions generate no profit. Combined with a minimum profit of -$6,599.98, this signals a structurally significant discounting problem across the dataset.
+> **Note:** The 25th percentile of Profit is $0.00, meaning at least 25% of all transactions generate no profit. Combined with a minimum of -$6,599.98, this signals a structurally significant discounting problem across the dataset.
 
 ---
 
 ### 2. Validation (Data Quality Gate)
 
-Before applying business logic, a strict data quality gateway was implemented to ensure reporting accuracy:
+Three-stage validation is enforced before any transformation:
 
-- **Duplicate Handling:** Automatically detects and drops duplicate transactions to prevent inflated revenue figures.
-- **Null Value Checks:** Scans for missing values across all columns.
-- **Schema Validation:** Ensures critical business columns (`Sales`, `Profit`, `Quantity`, `Discount`) exist before processing, raising a safe error if the source data structure changes.
+- **Duplicate Handling:** Detects and drops duplicate transactions to prevent inflated revenue figures. Logged with exact count.
+- **Null Value Checks:** Scans `Sales` and `Profit` columns — rows with missing values in these critical fields are dropped and logged.
+- **Schema Validation:** Verifies that all required business columns (`Sales`, `Profit`, `Quantity`, `Discount`) exist before processing. Raises a `ValueError` with a clear message if the source schema changes.
 
 ---
 
-### 3. Transformation (Data Cleaning & Feature Engineering)
-
-- **Column Standardization:** Replaced dots with underscores in column names (e.g., `Order.ID` → `Order_ID`) to ensure compatibility with SQL naming conventions.
-- **Data Type Correction:** Converted `Order_Date` and `Ship_Date` strings into proper `datetime` objects.
-- **Safe Mathematical Operations:** Handled potential DivisionByZero exceptions during margin calculations using vectorized conditional logic (`np.where`), preventing infinite (`inf`) values from corrupting the SQL database.
-- **Aggregation:** Performed grouping by `Category` and `Region` to validate total sales and profit figures before the loading phase.
+### 3. Transformation & Feature Engineering
 
 ```python
-# Safe Feature Engineering (Division by Zero protection)
+# Column standardization: Order.ID → Order_ID
+df.columns = [col.replace('.', '_') for col in df.columns]
+
+# Date type correction
+df['Order_Date'] = pd.to_datetime(df['Order_Date'], errors='coerce')
+df['Ship_Date']  = pd.to_datetime(df['Ship_Date'],  errors='coerce')
+
+# Safe margin calculation (Division by Zero protection)
 df['Profit_Margin'] = np.where(
     df['Sales'] == 0,
     0,
     (df['Profit'] / df['Sales']) * 100
 )
+```
 
-# Date conversion
-df['Order_Date'] = pd.to_datetime(df['Order_Date'], errors='coerce')
-df['Ship_Date']  = pd.to_datetime(df['Ship_Date'],  errors='coerce')
+An aggregated summary table is also generated at this stage:
+
+```python
+agg_df = df.groupby(["Category", "Region"])[["Sales", "Profit"]].sum().reset_index()
+agg_df['Profit_Margin'] = np.where(agg_df['Sales'] == 0, 0,
+                                    (agg_df['Profit'] / agg_df['Sales']) * 100)
 ```
 
 **Sales & Profit by Category and Region (selected):**
@@ -99,117 +120,54 @@ df['Ship_Date']  = pd.to_datetime(df['Ship_Date'],  errors='coerce')
 | Furniture | East | 208,291 | 3,046 |
 | **Furniture** | **Southeast Asia** | **313,391** | **-7,270** ⚠️ |
 
-> ⚠️ **Key Finding:** Furniture in Southeast Asia generates $313K in revenue but a net loss of -$7,270 — a negative-margin market. This pattern, where high gross sales mask structural losses, is a critical signal for pricing policy review, regional strategy reassessment, and financial risk management.
+> ⚠️ **Key Finding:** Furniture in Southeast Asia generates $313K in revenue but a net loss of -$7,270. High gross sales masking structural losses is a direct signal for pricing policy review and regional strategy reassessment.
 
 ---
 
 ### 4. Loading & Security
 
-- Established a secure connection to the MySQL server using an **SQLAlchemy Engine**.
-- **Credential Security:** Database passwords are strictly managed via environment variables (`os.getenv`) to prevent hardcoded credential leakage on GitHub.
-- Utilized the `.to_sql()` method with the `replace` parameter for idempotency (safe to re-run without duplicating records).
+- **Dual Table Strategy:** Raw transaction data loads into `superstore_orders`; the pre-aggregated summary loads into `sales_summary` — enabling both granular and fast analytical queries.
+- **Credential Security:** All database credentials are managed via environment variables. A missing `DB_PASSWORD` raises an `EnvironmentError` immediately — the pipeline never attempts a passwordless connection.
+- **Idempotency:** `if_exists='replace'` ensures the pipeline is safe to re-run without duplicating records.
+- **Fail-Safe Design:** All exceptions are caught, logged with full detail, and trigger `sys.exit(1)` — enabling clean integration with CI/CD pipelines and schedulers.
+- **Structured Logging:** All pipeline events (row counts, warnings, errors) are written simultaneously to terminal and `etl_pipeline.log` for auditability.
 
 ```python
-import os
+# Fail-safe credential check
+if not db_password:
+    raise EnvironmentError("CRITICAL: 'DB_PASSWORD' environment variable is missing.")
 
-# Secure credential management
-db_password = os.getenv("DB_PASSWORD")
-engine_url = f"mysql+pymysql://root:{db_password}@localhost/superstore_son"
-engine = create_engine(engine_url)
-
-df.to_sql(
-    'superstore_orders',
-    con=engine,
-    if_exists='replace',  # Idempotent: safe to re-run
-    index=False
-)
-# ✅ Rows successfully loaded into MySQL
+# Dual table load
+df.to_sql('superstore_orders', con=engine, if_exists='replace', index=False)
+agg_df.to_sql('sales_summary',  con=engine, if_exists='replace', index=False)
 ```
 
 ---
 
-## 📂 Repository Structure
+## 🔍 Business Intelligence Layer (`business_queries.sql`)
 
-```
-├── src/
-│   ├── data_pipeline.py      # Main ETL script with Data Validation
-│   └── analytics_viz.py      # Business analytics & visualization layer
-├── sql/
-│   └── business_queries.sql  # SQL scripts for business intelligence
-├── images/                   # Auto-generated visualization outputs
-│   ├── 01_executive_summary.png
-│   ├── 02_monthly_trend.png
-│   ├── 03_yoy_growth.png
-│   ├── 04_pareto_analysis.png
-│   ├── 05_segment_heatmap.png
-│   ├── 06_region_performance.png
-│   ├── 07_subcategory_margin.png
-│   ├── 08_discount_impact.png
-│   └── 09_loss_segments.png
-├── data/
-│   └── superstore_data.csv   # Raw dataset (not uploaded due to size)
-├── .env                      # Environment variables (not committed)
-├── .gitignore                # Excludes .env and /data
-├── README.md                 # Project documentation
-└── requirements.txt          # Required Python libraries
-```
+9 SQL queries organized by analytical category, running directly against the MySQL data warehouse:
+
+| # | Query | Technique |
+|---|---|---|
+| 1 | Executive Summary — Total Sales / Profit / Margin | Aggregation, `NULLIF` |
+| 2 | Monthly Sales & Profit Trend | `DATE_FORMAT`, `GROUP BY` |
+| 3 | Year-over-Year Growth | CTE, `LAG()` window function |
+| 4 | Pareto — Top customers (~80% of sales) | Nested subquery, `SUM() OVER()` |
+| 5 | Segment Analysis — Significant segments (>100K) | `GROUP BY`, `HAVING` |
+| 6 | Region Performance — Sales & avg profit per order | `COUNT(DISTINCT)`, derived KPI |
+| 7 | Sub-Category Margin — Negative margin detection | `HAVING` with expression |
+| 8 | Discount Impact — Profit erosion analysis | `GROUP BY Discount`, `AVG()` |
+| 9 | Loss-Making Segments — Critical risk detection | `HAVING SUM(Profit) < 0` |
 
 ---
 
-## 💡 Business Relevance
+## 📊 Business Analytics Dashboard (`analytics_viz.py`)
 
-This project reflects an analytical approach informed by both **economics training** and **legal/compliance coursework** — moving beyond technical data handling to identify commercially significant patterns:
-
-- **Enterprise-Grade Security & Reliability:** Implemented data validation gates and environment variable protection, demonstrating readiness for production environments and compliance with basic cybersecurity standards.
-- **Margin erosion risk:** At least 25% of transactions yield zero profit; Southeast Asia Furniture operates at a net loss despite high revenue — directly relevant to financial control and audit processes.
-- **Regional performance variance:** Profitability diverges sharply across markets, supporting data-driven resource allocation decisions.
-- **Data integrity enforcement:** Type correction, null dropping, and naming standardization are prerequisites for reliable regulatory reporting.
-
----
-
-## 🚀 How to Run
-
-```bash
-# 1. Install dependencies
-pip install -r requirements.txt
-
-# 2. Set environment variables
-# (Windows)
-set DB_PASSWORD=your_password
-# (Mac/Linux)
-export DB_PASSWORD="your_password"
-
-# 3. Run the ETL pipeline
-python src/data_pipeline.py
-
-# 4. Generate business analytics visuals
-python src/analytics_viz.py
-# ✅ All 9 charts saved to /images
-```
-
----
-
-*Dataset: Adapted from the Tableau Superstore dataset, widely used in business analytics education.*
-
----
-
-## 🛠️ Future Roadmap (v2.0)
-
-To scale this pipeline for production environments, the following enhancements are planned:
-
-- **Incremental Loading:** Implementing `MAX(Order_Date)` logic to fetch only new records.
-- **Advanced Constraints:** Adding `assert` checks and schema enforcement via Pydantic.
-- **Database Indexing:** Optimizing query performance on `Customer_Name` and `Order_Date` columns.
-
----
-
-## 📊 Business Analytics Dashboard
-
-Automated insights generated from the MySQL Data Warehouse using Python (Seaborn / Matplotlib).  
-All visuals are produced by `src/analytics_viz.py` and saved to `/images`.
+Each SQL query is paired with a dedicated visualization. All charts are auto-generated from the MySQL data warehouse and saved to `/images`.
 
 ### 1. Executive Summary
-Total Sales, Profit, and Profit Margin at a glance.
+Total Sales, Profit, and Profit Margin as KPI cards.
 
 ![Executive Summary](images/01_executive_summary.png)
 
@@ -223,21 +181,21 @@ Monthly trajectory of business performance across the full dataset period.
 ---
 
 ### 3. Year-over-Year Growth
-Annual sales volume with YoY growth rate overlay.
+Annual sales volume with YoY growth rate overlay on dual axis.
 
 ![YoY Growth](images/03_yoy_growth.png)
 
 ---
 
 ### 4. Pareto Analysis — Top Customers
-Identifying the ~20% of customers driving the majority of revenue, with cumulative % line.
+Top 20 customers by revenue with cumulative % line — identifying the ~20% driving the majority of sales.
 
 ![Pareto Analysis](images/04_pareto_analysis.png)
 
 ---
 
 ### 5. Profitability Heatmap — Category × Region
-Color-coded profit matrix revealing which segment/region combinations are structurally loss-making.
+Color-coded profit matrix (RdYlGn) revealing structurally loss-making segment/region combinations.
 
 ![Segment Heatmap](images/05_segment_heatmap.png)
 
@@ -251,7 +209,7 @@ Total sales and average profit per order by region — side-by-side comparison.
 ---
 
 ### 7. Sub-Category Profit Margin
-Diverging bar chart highlighting negative-margin product categories in red.
+Diverging bar chart — negative-margin sub-categories highlighted in red.
 
 ![Sub-Category Margin](images/07_subcategory_margin.png)
 
@@ -265,6 +223,82 @@ Bubble scatter showing how increasing discount rates erode average profit per or
 ---
 
 ### 9. Loss-Making Segments
-Critical risk detection — segments where total profit is negative despite positive revenue.
+Critical risk detection — Category/Region combinations where total profit is negative despite positive revenue.
 
 ![Loss Segments](images/09_loss_segments.png)
+
+---
+
+## 💡 Business Relevance
+
+This project reflects an analytical approach informed by both **economics training** and **legal/compliance coursework** — moving beyond technical data handling to identify commercially significant patterns:
+
+- **Enterprise-Grade Security & Reliability:** Credential management via environment variables, schema validation gates, and `sys.exit(1)` on failure — production-ready by design.
+- **Margin erosion risk:** At least 25% of transactions yield zero profit; Southeast Asia Furniture operates at a net loss despite $313K revenue — directly relevant to financial control and audit processes.
+- **Discount-profit correlation:** Discount rates above 40% consistently produce negative average profit per order — a structural pricing policy issue visible in both SQL (Query 8) and the scatter visualization.
+- **Regional performance variance:** Profitability diverges sharply across markets, supporting data-driven resource allocation decisions.
+- **Data integrity enforcement:** Type correction, null dropping, and naming standardization are prerequisites for reliable regulatory reporting.
+
+---
+
+## 📂 Repository Structure
+
+```
+├── src/
+│   ├── data_pipeline.py      # ETL pipeline — Extraction, Validation, Transformation, Loading
+│   └── analytics_viz.py      # Business analytics & visualization (9 charts)
+├── sql/
+│   └── business_queries.sql  # 9 business intelligence SQL queries
+├── images/                   # Auto-generated visualization outputs
+│   ├── 01_executive_summary.png
+│   ├── 02_monthly_trend.png
+│   ├── 03_yoy_growth.png
+│   ├── 04_pareto_analysis.png
+│   ├── 05_segment_heatmap.png
+│   ├── 06_region_performance.png
+│   ├── 07_subcategory_margin.png
+│   ├── 08_discount_impact.png
+│   └── 09_loss_segments.png
+├── data/
+│   └── superstore_data.csv   # Raw dataset (not uploaded due to size)
+├── .env.example              # Template: DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME, DATA_FILE
+├── .gitignore                # Excludes .env, /data, etl_pipeline.log
+├── LICENSE
+├── README.md
+└── requirements.txt
+```
+
+---
+
+## 🚀 How to Run
+
+```bash
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Configure environment variables
+cp .env.example .env
+# Edit .env with your MySQL credentials
+
+# 3. Run the ETL pipeline
+python src/data_pipeline.py
+# ✅ Loads data into MySQL (superstore_orders + sales_summary tables)
+# ✅ Writes execution log to etl_pipeline.log
+
+# 4. Generate business analytics visuals
+python src/analytics_viz.py
+# ✅ All 9 charts saved to /images
+```
+
+---
+
+## 🛠️ Future Roadmap (v2.0)
+
+- **Incremental Loading:** `MAX(Order_Date)` logic to fetch only new records on each run.
+- **Advanced Constraints:** `assert` checks and schema enforcement via Pydantic.
+- **Database Indexing:** Query optimization on `Customer_Name` and `Order_Date` columns.
+- **Orchestration:** Apache Airflow DAG for scheduled pipeline execution.
+
+---
+
+*Dataset: Adapted from the Tableau Superstore dataset, widely used in business analytics education.*
