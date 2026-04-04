@@ -180,3 +180,29 @@ To scale this pipeline for production environments, the following enhancements a
 - **Incremental Loading:** Implementing `MAX(Order_Date)` logic to fetch only new records.
 - **Advanced Constraints:** Adding `assert` checks and `schema-enforcement` via Pydantic.
 - **Database Indexing:** Optimizing query performance on `Customer_Name` and `Order_Date` columns.
+
+## 📊 Business Analytics Dashboard
+
+Automated insights generated from the MySQL Data Warehouse using Python (Seaborn/Matplotlib).
+
+### 1. Executive Summary
+Overview of Total Sales, Profit, and Profit Margin.
+![Executive Summary](images/01_executive_summary.png)
+
+### 2. Sales & Profit Trends
+Monthly trajectory of business performance.
+![Monthly Trend](images/02_monthly_trend.png)
+
+### 3. Year-over-Year Growth
+Visualizing annual performance shifts.
+![YoY Growth](images/03_yoy_growth.png)
+
+### 4. Pareto Analysis (Top Customers)
+Identifying the 20% of customers driving the majority of sales.
+![Pareto Analysis](images/04_pareto_analysis.png)
+
+### 5. Profitability Heatmap
+Deep dive into Category vs. Region performance.
+![Segment Heatmap](images/05_segment_heatmap.png)
+
+> **Note:** For the full list of 9 analytical reports, please check the `/images` directory.
