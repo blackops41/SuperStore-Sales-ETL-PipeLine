@@ -3,12 +3,14 @@ import sys
 import pandas as pd
 import numpy as np
 from sqlalchemy import create_engine
+from dotenv import load_dotenv
 import logging
 
 # =============================================
 # LOGGING CONFIGURATION
 # =============================================
 # Logları hem terminale hem de bir .log dosyasına yazdıracak yapılandırma
+load_dotenv()  # .env dosyasını yükler
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
