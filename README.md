@@ -231,7 +231,7 @@ Critical risk detection — Category/Region combinations where total profit is n
 
 ## 💡 Business Relevance
 
-This project reflects an analytical approach informed by both **economics training** and **legal/compliance coursework** — moving beyond technical data handling to identify commercially significant patterns:
+This project reflects an analytical approach informed by economics and econometric training — moving beyond technical data handling to identify commercially significant patterns — moving beyond technical data handling to identify commercially significant patterns:
 
 - **Enterprise-Grade Security & Reliability:** Credential management via environment variables, schema validation gates, and `sys.exit(1)` on failure — production-ready by design.
 - **Margin erosion risk:** At least 25% of transactions yield zero profit; Southeast Asia Furniture operates at a net loss despite $313K revenue — directly relevant to financial control and audit processes.
